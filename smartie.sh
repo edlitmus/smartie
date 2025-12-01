@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-set -euo pipefail
-set -x
+# set -euo pipefail
+# set -x
 
 # Check if running as root
 if [ "$EUID" -ne 0 ]; then
@@ -23,15 +23,26 @@ SMART_ATTRS[188]="Command Timeout"
 SMART_ATTRS[197]="Current Pending Sector Count"
 SMART_ATTRS[198]="Uncorrectable Sector Count"
 
+HOST_OS=$(uname -s)
+
 # Function to check SMART attributes for a drive
 check_smart_attrs() {
     local drive=$1
     local found_issues=0
     
     # Get drive info
-    local model=$(smartctl -i "$drive" | grep "Device Model" | cut -d: -f2 | xargs)
-    local serial=$(smartctl -i "$drive" | grep "Serial Number" | cut -d: -f2 | xargs)
-    
+    local model=""
+    local serial=""
+
+    if [ "$HOST_OS" == "FreeBSD" ]; then
+        disk=$(basename "$drive")
+        model=$(camcontrol devlist | grep "$disk)" | sed -n 's/.*<\([^>]*\)>.*/\1/p')
+        serial=$(smartctl -d sat,auto -i "/dev/$drive" | grep -i "Serial Number" | cut -d: -f2 | xargs)
+    else
+        model=$(smartctl -i "$drive" | grep "Product" | cut -d: -f2 | xargs)
+        serial=$(smartctl -i "$drive" | grep "Serial Number" | cut -d: -f2 | xargs)
+    fi
+
     # Check each critical attribute
     while read -r line; do
         # Skip header lines and empty lines
@@ -66,12 +77,12 @@ echo "Smartie - SMART Drive Health Checker"
 total_drives=0
 problem_drives=0
 disk_list_cmd="lsblk -d -n -o NAME | grep -E '^sd'"
-host_os=$(uname -s)
-if [ "$host_os" == "FreeBSD" ]; then
-    disk_list_cmd="geom disk list | grep Name | awk '{print $3}'"
+
+if [ "$HOST_OS" == "FreeBSD" ]; then
+    disk_list_cmd="geom disk list | grep Name | awk '{print \$3}'"
 fi
 
-for drive in $($disk_list_cmd); do
+for drive in $(eval $disk_list_cmd); do
     ((total_drives++))
     check_smart_attrs "/dev/$drive"
     if [ $? -eq 1 ]; then
