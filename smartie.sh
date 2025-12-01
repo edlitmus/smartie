@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Check if running as root
 if [ "$EUID" -ne 0 ]; then
@@ -62,8 +62,13 @@ echo "Smartie - SMART Drive Health Checker"
 # Find all SATA drives
 total_drives=0
 problem_drives=0
+disk_list_cmd="lsblk -d -n -o NAME | grep -E '^sd'"
+host_os=$(uname -s)
+if [ "$host_os" == "FreeBSD" ]; then
+    disk_list_cmd="geom disk list | grep Name | awk '{print $3}'"
+fi
 
-for drive in $(lsblk -d -n -o NAME | grep -E '^sd'); do
+for drive in $($disk_list_cmd); do
     ((total_drives++))
     check_smart_attrs "/dev/$drive"
     if [ $? -eq 1 ]; then
